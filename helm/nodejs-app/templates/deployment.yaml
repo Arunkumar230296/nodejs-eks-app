@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: nodejs-app
-          image: dockerhub-username/nodejs-eks-app:initial
+          image: dockerarun2302/nodejs-eks-app:6a2a0091f52887924184fc2aa60c517fbb20ace7
           imagePullPolicy: Always
           ports:
             - name: http
