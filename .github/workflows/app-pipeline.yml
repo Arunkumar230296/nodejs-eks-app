@@ -14,10 +14,11 @@ on:
       - ".dockerignore"
       - "helm/**"
       - ".github/workflows/app-pipeline.yml"
+
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
 
 jobs:
@@ -71,31 +72,13 @@ jobs:
         run: |
           docker push "${{ secrets.DOCKERHUB_USERNAME }}/nodejs-eks-app:${{ github.sha }}"
 
-      - name: Update Kubernetes image
-        uses: mikefarah/yq@v4.44.3
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          IMAGE_TAG: ${{ github.sha }}
-        with:
-          cmd: yq -i '.spec.template.spec.containers[0].image = strenv(DOCKERHUB_USERNAME) + "/nodejs-eks-app:" + strenv(IMAGE_TAG)' helm/nodejs-app/templates/deployment.yaml
-
-      - name: Commit image update
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add helm/nodejs-app/templates/deployment.yaml
-          git commit -m "chore: update deployment image ${GITHUB_SHA}" || echo "No changes to commit"
-          git push origin HEAD:main
-
   deploy-to-eks:
     needs: build-test-scan
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout application
         uses: actions/checkout@v4
-        with:
-          ref: main
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
@@ -105,21 +88,31 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
-      - name: Configure AWS
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ap-southeast-2
 
       - name: Connect to EKS
-        run: aws eks update-kubeconfig --region ap-southeast-2 --name nodejs-eks-cluster
+        run: |
+          aws eks update-kubeconfig \
+            --region ap-southeast-2 \
+            --name nodejs-eks-cluster
 
       - name: Deploy application
-        run: helm upgrade --install nodejs-app ./helm/nodejs-app --namespace nodejs-app --create-namespace --wait --timeout 10m
-
-      - name: Verify application
         run: |
-          kubectl rollout status deployment/nodejs-app -n nodejs-app --timeout=300s
+          helm upgrade --install nodejs-app ./helm/nodejs-app \
+            --namespace nodejs-app \
+            --create-namespace \
+            --set image.repository=${{ secrets.DOCKERHUB_USERNAME }}/nodejs-eks-app \
+            --set image.tag=${{ github.sha }} \
+            --wait \
+            --timeout 10m
+
+      - name: Verify deployment
+        run: |
+          kubectl get deployments -n nodejs-app
           kubectl get pods -n nodejs-app
           kubectl get services -n nodejs-app
           kubectl get ingress -n nodejs-app
