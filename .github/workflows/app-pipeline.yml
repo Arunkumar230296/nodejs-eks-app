@@ -1,3 +1,4 @@
+
 name: Node.js Application CI-CD
 
 on:
@@ -8,21 +9,23 @@ on:
       - "src/**"
       - "test/**"
       - "package.json"
+      - "package-lock.json"
       - "Dockerfile"
       - ".dockerignore"
+      - "helm/**"
       - ".github/workflows/app-pipeline.yml"
-
   workflow_dispatch:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
-  build-test-scan-deploy:
+  build-test-scan:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -30,16 +33,15 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Generate package lock
-        run: npm install --package-lock-only --ignore-scripts
-
       - name: Install dependencies
-        run: npm ci
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          npm ci
 
       - name: Run tests
         run: npm test
 
-      - name: Run code checks
+      - name: Run lint
         run: npm run lint
 
       - name: Security audit
@@ -47,9 +49,7 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build \
-            -t "${{ secrets.DOCKERHUB_USERNAME }}/nodejs-eks-app:${{ github.sha }}" \
-            .
+          docker build -t "${{ secrets.DOCKERHUB_USERNAME }}/nodejs-eks-app:${{ github.sha }}" .
 
       - name: Scan Docker image
         uses: aquasecurity/trivy-action@v0.36.0
@@ -71,7 +71,7 @@ jobs:
         run: |
           docker push "${{ secrets.DOCKERHUB_USERNAME }}/nodejs-eks-app:${{ github.sha }}"
 
-      - name: Update Kubernetes deployment image
+      - name: Update Kubernetes image
         uses: mikefarah/yq@v4.44.3
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -79,11 +79,47 @@ jobs:
         with:
           cmd: yq -i '.spec.template.spec.containers[0].image = strenv(DOCKERHUB_USERNAME) + "/nodejs-eks-app:" + strenv(IMAGE_TAG)' helm/nodejs-app/templates/deployment.yaml
 
-      - name: Commit GitOps image update
+      - name: Commit image update
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           git add helm/nodejs-app/templates/deployment.yaml
-          git commit -m "chore: update deployment image ${GITHUB_SHA}"
+          git commit -m "chore: update deployment image ${GITHUB_SHA}" || echo "No changes to commit"
           git push origin HEAD:main
+
+  deploy-to-eks:
+    needs: build-test-scan
+    runs-on: [self-hosted, Windows, X64]
+
+    steps:
+      - name: Checkout application
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.34.0
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ap-southeast-2
+
+      - name: Connect to EKS
+        run: aws eks update-kubeconfig --region ap-southeast-2 --name nodejs-eks-cluster
+
+      - name: Deploy application
+        run: helm upgrade --install nodejs-app ./helm/nodejs-app --namespace nodejs-app --create-namespace --wait --timeout 10m
+
+      - name: Verify application
+        run: |
+          kubectl rollout status deployment/nodejs-app -n nodejs-app --timeout=300s
+          kubectl get pods -n nodejs-app
+          kubectl get services -n nodejs-app
+          kubectl get ingress -n nodejs-app
