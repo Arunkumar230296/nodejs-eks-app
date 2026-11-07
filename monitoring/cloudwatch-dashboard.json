@@ -1,0 +1,17 @@
+{
+  "widgets": [
+    {
+      "type": "log",
+      "x": 0,
+      "y": 0,
+      "width": 24,
+      "height": 8,
+      "properties": {
+        "query": "SOURCE '/aws/eks/nodejs-eks-cluster/cluster' | fields @timestamp, @message | sort @timestamp desc | limit 50",
+        "region": "ap-southeast-2",
+        "title": "EKS Cluster Logs",
+        "view": "table"
+      }
+    }
+  ]
+}

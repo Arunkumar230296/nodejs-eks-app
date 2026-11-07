@@ -1,0 +1,40 @@
+replicaCount: 2
+
+image:
+  repository: dockerhub-username/nodejs-eks-app
+  tag: initial
+  pullPolicy: Always
+
+containerPort: 3000
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+serviceAccount:
+  name: default
+
+ingress:
+  enabled: true
+  className: alb
+  scheme: internet-facing
+  targetType: ip
+  healthcheckPath: /health
+  host: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+secrets:
+  enabled: false
+  secretArn: ""
+  region: ap-southeast-2
+
+app:
+  environment: production

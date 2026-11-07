@@ -1,0 +1,15 @@
+{
+  "name": "nodejs-eks-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Node.js application deployed to AWS EKS using GitHub Actions, Docker, Helm and ArgoCD",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test",
+    "lint": "node --check src/app.js && node --check src/server.js && node --check test/app.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
