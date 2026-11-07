@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: nodejs-app
-          image: dockerarun2302/nodejs-eks-app:6a2a0091f52887924184fc2aa60c517fbb20ace7
+          image: dockerarun2302/nodejs-eks-app:099f7a9cec7d5f09ba0add517bc39ab9e543abf7
           imagePullPolicy: Always
           ports:
             - name: http
